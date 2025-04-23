@@ -1,26 +1,33 @@
 import React, { useState } from "react";
-import { View, Text, ScrollView, StyleSheet } from "react-native";
+import { View, ScrollView, Text, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import CalendarStrip from "../components/CalendarStrip";
 import WorkoutCard from "../components/WorkoutCard";
-import { getWorkoutForDate } from "../data/workouts";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { EXERCISES } from "../data/exercises";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const HomeScreen = () => {
+export default function HomeScreen() {
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return today;
   });
 
-  const workout = getWorkoutForDate(selectedDate);
-  const insets = useSafeAreaInsets();
+  const [workout, setWorkout] = useState(null);
+  const [exerciseData, setExerciseData] = useState({});
+
+  // hole Übungen aus AsyncStorage (falls noch nicht geladen)
+  React.useEffect(() => {
+    AsyncStorage.getItem("exerciseData").then((raw) => {
+      if (raw) setExerciseData(JSON.parse(raw));
+    });
+  }, []);
 
   return (
     <View style={[styles.container]}>
       <CalendarStrip
-        onSelectDate={setSelectedDate}
         selectedDate={selectedDate}
+        onSelectDate={setSelectedDate}
+        onWorkoutChange={setWorkout}
       />
 
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -33,21 +40,25 @@ const HomeScreen = () => {
           – {workout?.name || "Ruhetag"}
         </Text>
 
-        {workout?.exercises.map((id, i) => {
-          const exercise = EXERCISES[id];
-          return <WorkoutCard key={id} exercise={exercise} />;
+        {workout?.exercises.map((ex, i) => {
+          const data = exerciseData[ex.id];
+          return data ? (
+            <WorkoutCard
+              exercise={exerciseData[ex.id]}
+              sets={ex.sets}
+              warmups={ex.warmups}
+            />
+          ) : null;
         })}
       </ScrollView>
     </View>
   );
-};
-
-export default HomeScreen;
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 10,
+    paddingHorizontal: 15,
     backgroundColor: "#F9F9F9",
   },
   title: {

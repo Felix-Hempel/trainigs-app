@@ -8,17 +8,31 @@ import {
   TextInput,
   FlatList,
 } from "react-native";
-import { EXERCISES } from "../data/exercises";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import { useNavigation } from "@react-navigation/native";
 import ExerciseDetailScreen from "./ExerciseDetailScreen";
+
 export default function ExerciseScreen() {
   const navigation = useNavigation();
   const [search, setSearch] = useState("");
   const [sorted, setSorted] = useState(false);
   const [muscleFilter, setMuscleFilter] = useState(null);
   const [favorites, setFavorites] = useState([]);
+  const [exerciseData, setExerciseData] = useState({});
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadExercises = async () => {
+        const exRaw = await AsyncStorage.getItem("exerciseData");
+        if (exRaw) {
+          setExerciseData(JSON.parse(exRaw));
+        }
+      };
+      loadExercises();
+    }, [])
+  );
 
-  const allExercises = Object.values(EXERCISES);
+  const allExercises = Object.values(exerciseData);
   const muscleGroups = [
     ...new Set(allExercises.map((ex) => ex.muscleGroup).filter(Boolean)),
   ];
@@ -42,6 +56,16 @@ export default function ExerciseScreen() {
       if (!favorites.includes(a.id) && favorites.includes(b.id)) return 1;
       return 0;
     });
+
+  if (allExercises.length === 0) {
+    return (
+      <View style={styles.container}>
+        <Text style={{ textAlign: "center", marginTop: 50 }}>
+          Keine Übungen gefunden. Bitte lade zuerst einen Split.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -131,7 +155,6 @@ export default function ExerciseScreen() {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    backgroundColor: "#F9F9F9",
     paddingBottom: 40,
   },
   title: {

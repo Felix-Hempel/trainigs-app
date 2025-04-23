@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,30 +7,90 @@ import {
   ScrollView,
   TouchableOpacity,
 } from "react-native";
-import { saveExerciseLog } from "../utils/saveLogEntry";
+import { saveExerciseLog, getExerciseLog } from "../utils/saveLogEntry";
 import ProgressGraph from "../components/ProgressGraph";
 import YoutubeEmbed from "../components/YoutubeEmbed";
-import { EXERCISES } from "../data/exercises";
-import { useEffect } from "react";
-import { getExerciseLog } from "../utils/saveLogEntry";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function ExerciseDetailScreen({ route }) {
   const { exerciseId } = route.params;
   const [selectedSubId, setSelectedSubId] = useState(null);
+  const [exerciseData, setExerciseData] = useState({});
+  const [inputs, setInputs] = useState([]);
+  const [logData, setLogData] = useState([]);
+  const [lastLog, setLastLog] = useState(null);
+  const [numSets, setNumSets] = useState(0);
+  const [numWarmups, setNumWarmups] = useState(0);
 
-  const baseExercise = EXERCISES[exerciseId];
   const activeExercise = selectedSubId
-    ? EXERCISES[selectedSubId]
-    : baseExercise;
+    ? exerciseData[selectedSubId]
+    : exerciseData[exerciseId];
 
-  const [inputs, setInputs] = useState(() =>
-    activeExercise?.sets
-      ? Array.from({ length: activeExercise.sets }, () => ({
+  useEffect(() => {
+    const loadExerciseData = async () => {
+      const [exRaw, workoutRaw] = await Promise.all([
+        AsyncStorage.getItem("exerciseData"),
+        AsyncStorage.getItem("splitPlan"),
+      ]);
+      if (!exRaw || !workoutRaw) return;
+
+      const parsedExercises = JSON.parse(exRaw);
+      const parsedWorkouts = JSON.parse(workoutRaw);
+
+      setExerciseData(parsedExercises);
+
+      const activeId = selectedSubId || exerciseId;
+      const activeExercise = parsedExercises[activeId];
+
+      // Hole Sätze und Warmups aus dem Workout (nicht aus der Übung!)
+      let sets = 0;
+      let warmups = 0;
+
+      for (const workout of parsedWorkouts) {
+        const found = workout.exercises.find((ex) => ex.id === activeId);
+        if (found) {
+          sets = found.sets;
+          warmups = found.warmups;
+          setNumSets(sets);
+          setNumWarmups(warmups);
+          break;
+        }
+      }
+
+      setInputs(
+        Array.from({ length: sets }, () => ({
           weight: "",
           reps: "",
         }))
-      : []
-  );
+      );
+    };
+
+    loadExerciseData();
+  }, [exerciseId, selectedSubId]);
+
+  useEffect(() => {
+    const loadLogs = async () => {
+      if (!activeExercise?.name) return;
+      const logs = await getExerciseLog(activeExercise.name);
+      setLogData(logs);
+      if (logs.length > 0) {
+        const last = logs[logs.length - 1];
+        setLastLog(last);
+      }
+    };
+    loadLogs();
+  }, [activeExercise]);
+
+  const handleChange = (i, field, value) => {
+    const updated = [...inputs];
+    updated[i][field] = value;
+    setInputs(updated);
+    const entry = {
+      sets: updated,
+      substitution: selectedSubId || null,
+    };
+    saveExerciseLog(activeExercise.name, entry);
+  };
 
   const extractYoutubeId = (url) => {
     const match = url.match(/(?:\?v=|\/embed\/|\.be\/)([a-zA-Z0-9_-]{11})/);
@@ -56,58 +116,15 @@ export default function ExerciseDetailScreen({ route }) {
         };
       });
 
-  const bestSetGraph = (type) =>
-    logData
-      .slice(-7)
-      .filter((log) => Array.isArray(log.sets) && log.sets.length > 0)
-      .map((log) => {
-        const values = log.sets
-          .map((s) => parseFloat(s?.[type] || 0))
-          .filter((v) => !isNaN(v));
-        const max = values.length ? Math.max(...values) : 0;
-        return {
-          date: log.date.slice(0, 10),
-          value: isFinite(max) ? max : 0,
-        };
-      });
-
-  const handleChange = (i, field, value) => {
-    const updated = [...inputs];
-    updated[i][field] = value;
-    setInputs(updated);
-
-    const entry = {
-      sets: updated,
-      substitution: selectedSubId || null,
-    };
-    saveExerciseLog(activeExercise.name, entry);
-  };
-  const [logData, setLogData] = useState([]);
-  const [lastLog, setLastLog] = useState(null);
-
-  useEffect(() => {
-    const loadLogs = async () => {
-      const logs = await getExerciseLog(activeExercise.name);
-      setLogData(logs);
-
-      if (logs.length > 0) {
-        const last = logs[logs.length - 1];
-        setLastLog(last);
-      }
-    };
-
-    loadLogs();
-  }, [activeExercise]);
-
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.exerciseName}>{activeExercise.name}</Text>
+        <Text style={styles.exerciseName}>{activeExercise?.name}</Text>
         <Text style={styles.secondary}>
-          Sätze: {activeExercise.sets} · Aufwärm: {activeExercise.warmups}
+          Sätze: {numSets} · Aufwärm: {numWarmups}
         </Text>
 
-        {activeExercise.description && (
+        {activeExercise?.description && (
           <View style={{ marginTop: 12 }}>
             <Text style={styles.subTitle}>Beschreibung</Text>
             <Text style={styles.descriptionText}>
@@ -116,7 +133,7 @@ export default function ExerciseDetailScreen({ route }) {
           </View>
         )}
 
-        {activeExercise.video && (
+        {activeExercise?.video && (
           <View style={{ marginTop: 12 }}>
             <Text style={styles.subTitle}>Video</Text>
             <YoutubeEmbed videoId={extractYoutubeId(activeExercise.video)} />
@@ -124,33 +141,6 @@ export default function ExerciseDetailScreen({ route }) {
         )}
       </View>
 
-      {/* Substitutions-Auswahl */}
-      {baseExercise.subs && baseExercise.subs.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Substitution wählen</Text>
-          <View style={styles.subList}>
-            {baseExercise.subs.map((subId, i) => {
-              const sub = EXERCISES[subId];
-              const isActive = selectedSubId === subId;
-              return (
-                <TouchableOpacity
-                  key={i}
-                  style={[styles.subBtn, isActive && styles.subBtnActive]}
-                  onPress={() => setSelectedSubId(isActive ? null : subId)}
-                >
-                  <Text
-                    style={
-                      isActive ? styles.subBtnTextActive : styles.subBtnText
-                    }
-                  >
-                    {sub.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      )}
       {lastLog && (
         <View style={styles.lastEntryBox}>
           <Text style={styles.sectionTitle}>Letztes Training</Text>
@@ -211,7 +201,6 @@ const styles = StyleSheet.create({
     elevation: 2,
     gap: 6,
   },
-
   container: {
     padding: 20,
     paddingBottom: 40,
@@ -260,27 +249,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginBottom: 10,
-  },
-  subList: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  subBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: "#eee",
-    borderRadius: 10,
-  },
-  subBtnActive: {
-    backgroundColor: "#007AFF",
-  },
-  subBtnText: {
-    color: "#333",
-  },
-  subBtnTextActive: {
-    color: "#fff",
-    fontWeight: "600",
   },
   inputRow: {
     flexDirection: "row",

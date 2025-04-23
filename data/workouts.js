@@ -1,38 +1,17 @@
-export function getWorkoutForDate(date) {
-  const weekday = date.getDay();
-  const isEvenWeek = getWeekNumber(date) % 2 === 0;
+const getTrainingDayNumber = (date) => {
+  const weekday = date.getDay(); // 0 = Sonntag
+  const weekNum =
+    Math.ceil(
+      (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) -
+        Date.UTC(date.getFullYear(), 0, 1)) /
+        86400000
+    ) / 7;
 
-  const plan = {
-    2: isEvenWeek ? "Upper C" : "Upper A",
-    3: isEvenWeek ? "Lower C" : "Lower A",
-    5: isEvenWeek ? "Upper A" : "Upper B",
-    6: isEvenWeek ? "Lower A" : "Lower B",
-  };
-
-  const name = plan[weekday];
-  if (!name) return null;
-
-  const workouts = {
-    "Upper A": [
-      "seated_incline_chest_press",
-      "seated_pulldown",
-      "seated_dip_machine",
-      "unilateral_preacher_curl",
-      "ez_bar_reverse_curl",
-      "seated_lateral_raise",
-    ],
-    "Upper B": ["schraegbank", "latzug"],
-    "Upper C": ["ohp", "kh_rudern"],
-    "Lower A": ["kniebeuge", "beinbeuger"],
-    "Lower B": ["beinpresse", "wadenheben"],
-    "Lower C": ["frontkniebeuge", "hip_thrust"],
-  };
-
-  return {
-    name,
-    exercises: workouts[name],
-  };
-}
+  const trainingDayNumber = (weekNum % 2 === 0 ? [1, 2, 5, 6] : [3, 4, 5, 6])[
+    weekday - 1
+  ];
+  return trainingDayNumber ?? 0;
+};
 
 function getWeekNumber(d) {
   d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));

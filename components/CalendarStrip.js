@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   ScrollView,
@@ -6,21 +6,68 @@ import {
   Text,
   StyleSheet,
 } from "react-native";
-import { getWorkoutForDate } from "../data/workouts";
 import { isSameDay } from "../utils/dateHelpers";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getWorkoutForDate } from "../utils/workoutHelpers";
 
-export default function CalendarStrip({ onSelectDate, selectedDate }) {
+export default function CalendarStrip({
+  onSelectDate,
+  selectedDate,
+  onWorkoutChange,
+}) {
+  const [workoutDays, setWorkoutDays] = useState({});
   const scrollRef = useRef();
+  const [splitPlan, setSplitPlan] = useState([]);
+  const [schedule, setSchedule] = useState({});
+  const [scrollReady, setScrollReady] = useState(false);
+  useEffect(() => {
+    const loadData = async () => {
+      const planRaw = await AsyncStorage.getItem("splitPlan");
+      const scheduleRaw = await AsyncStorage.getItem("activeSplit");
 
-  // 👇 Erstelle 14 Tage mit Zeit = 0:00:00
+      console.log("🧠 planRaw:", planRaw);
+      console.log("🧠 scheduleRaw:", scheduleRaw);
+
+      if (planRaw && scheduleRaw) {
+        const parsedPlan = JSON.parse(planRaw);
+        const parsedSchedule = JSON.parse(scheduleRaw);
+
+        console.log("✅ splitPlan:", parsedPlan);
+        console.log("✅ schedule:", parsedSchedule.schedule);
+
+        setSplitPlan(parsedPlan);
+        setSchedule(parsedSchedule.schedule);
+      }
+    };
+
+    loadData();
+  }, []);
+  useEffect(() => {
+    const loadWorkoutDays = async () => {
+      const results = await Promise.all(
+        days.map(async (day) => {
+          const workout = await getWorkoutForDate(day);
+          return { key: day.toDateString(), hasWorkout: !!workout };
+        })
+      );
+
+      const map = {};
+      results.forEach((r) => {
+        map[r.key] = r.hasWorkout;
+      });
+
+      setWorkoutDays(map);
+    };
+
+    loadWorkoutDays();
+  }, [splitPlan, schedule]);
+
   const days = Array.from({ length: 14 }, (_, i) => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - 7 + i);
-    return new Date(d); // neue Kopie mit nullter Zeit
+    return new Date(d);
   });
-
-  // 👇 Scrolle zum heutigen Tag beim Mount
   useEffect(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -28,15 +75,79 @@ export default function CalendarStrip({ onSelectDate, selectedDate }) {
     const index = days.findIndex((d) => isSameDay(d, today));
     const itemWidth = 76;
 
-    if (index !== -1 && scrollRef.current) {
-      setTimeout(() => {
-        scrollRef.current.scrollTo({
-          x: itemWidth * (index - 2),
-          animated: false,
-        });
-      }, 10); // kleiner Delay, damit ScrollView ready ist
+    if (index !== -1) {
+      const scrollToIndex = () => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTo({
+            x: itemWidth * (index - 2),
+            animated: false,
+          });
+        }
+      };
+
+      // Jetzt sicherstellen, dass ScrollView gerendert ist:
+      requestAnimationFrame(scrollToIndex);
     }
-  }, []);
+  }, [scrollRef.current]);
+
+  const getTrainingDayTag = (targetDate) => {
+    const weekdayKeys = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ];
+
+    let trainingCount = 0;
+    const firstOfMonth = new Date(
+      targetDate.getFullYear(),
+      targetDate.getMonth(),
+      1
+    );
+
+    for (
+      let d = new Date(firstOfMonth);
+      d <= targetDate;
+      d.setDate(d.getDate() + 1)
+    ) {
+      const key = weekdayKeys[(d.getDay() + 1) % 7];
+
+      if (schedule[key]) {
+        trainingCount++;
+      }
+    }
+
+    return trainingCount;
+  };
+
+  useEffect(() => {
+    if (!scrollReady) return;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const index = days.findIndex((d) => isSameDay(d, today));
+    const itemWidth = 76;
+
+    if (index !== -1 && scrollRef.current) {
+      scrollRef.current.scrollTo({
+        x: itemWidth * (index - 2),
+        animated: false,
+      });
+    }
+  }, [scrollReady]);
+
+  useEffect(() => {
+    const fetchWorkout = async () => {
+      const workout = await getWorkoutForDate(selectedDate);
+      onWorkoutChange(workout);
+    };
+
+    fetchWorkout();
+  }, [selectedDate, splitPlan, schedule]);
 
   return (
     <View style={styles.stripWrapper}>
@@ -48,7 +159,7 @@ export default function CalendarStrip({ onSelectDate, selectedDate }) {
       >
         {days.map((day, i) => {
           const isSelected = isSameDay(selectedDate, day);
-          const hasWorkout = !!getWorkoutForDate(day);
+          const hasWorkout = workoutDays[day.toDateString()] === true;
 
           return (
             <TouchableOpacity
@@ -80,11 +191,14 @@ export default function CalendarStrip({ onSelectDate, selectedDate }) {
 }
 
 const styles = StyleSheet.create({
+  stripWrapper: {
+    paddingTop: 15,
+  },
   strip: {
     flexDirection: "row",
-    marginVertical: 10,
+    marginVertical: 0,
     paddingHorizontal: 10,
-    paddingBottom: 10,
+    paddingBottom: 15,
     borderBottomWidth: 1,
     borderColor: "#ddd",
   },

@@ -1,9 +1,11 @@
-import React from "react";
 import { TouchableOpacity, Text, StyleSheet, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import React, { useState } from "react";
 
-const WorkoutCard = ({ exercise }) => {
+const WorkoutCard = ({ exercise, sets, warmups }) => {
   const navigation = useNavigation();
+
+  if (!exercise) return null;
 
   return (
     <TouchableOpacity
@@ -14,8 +16,13 @@ const WorkoutCard = ({ exercise }) => {
     >
       <Text style={styles.name}>{exercise.name}</Text>
       <Text style={styles.info}>
-        {exercise.sets} Sätze · {exercise.warmups} Aufwärm
+        <Text style={styles.blueItalic}>
+          {sets} Sätze · {warmups} Aufwärm
+        </Text>
       </Text>
+      {exercise.muscleGroup && (
+        <Text style={styles.grayItalic}>{exercise.muscleGroup}</Text>
+      )}
     </TouchableOpacity>
   );
 };
@@ -40,6 +47,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   info: {
-    color: "#555",
+    marginBottom: 4,
+  },
+  blueItalic: {
+    fontStyle: "italic",
+    color: "#007AFF",
+  },
+  grayItalic: {
+    fontStyle: "italic",
+    color: "#888",
   },
 });
