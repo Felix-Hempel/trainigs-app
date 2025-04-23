@@ -44,6 +44,7 @@ export default function HomeScreen() {
           const data = exerciseData[ex.id];
           return data ? (
             <WorkoutCard
+              key={ex.id || i}
               exercise={exerciseData[ex.id]}
               sets={ex.sets}
               warmups={ex.warmups}

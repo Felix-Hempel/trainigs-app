@@ -21,3 +21,10 @@ export const getExerciseLog = async (exerciseName) => {
     return [];
   }
 };
+export const deleteExerciseLogEntry = async (exerciseName, index) => {
+  const raw = await AsyncStorage.getItem(`log_${exerciseName}`);
+  if (!raw) return;
+  const logs = JSON.parse(raw);
+  logs.splice(index, 1);
+  await AsyncStorage.setItem(`log_${exerciseName}`, JSON.stringify(logs));
+};
